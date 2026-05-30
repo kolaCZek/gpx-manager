@@ -1,34 +1,33 @@
 # GPX Manager
 
-Web appka pro správu GPX tras — Flask backend + Leaflet mapa, Docker.
+A web app for managing GPX routes — Flask backend + Leaflet map, Docker.
 
 ## Features
 
-- 📂 Seznam GPX souborů
-- 🗺 Interaktivní mapa (Leaflet/OpenStreetMap)
-- 📍 Přidávání bodů kliknutím na mapu nebo tažením
-- ✏️ Editace waypoints a XML
-- 🗑 Mazání, přejmenování, stahování tras
-- ➕ Generování trasy z názvů míst (geocoding přes Nominatim)
-- 📍 Import z Google Maps odkazu
-- 📱 Mobilní layout
+- 📂 GPX file list with rename, download, delete
+- 🗺 Interactive map (Leaflet / OpenStreetMap)
+- 📍 Add waypoints by clicking on the map or dragging markers
+- ✏️ Edit waypoints list and raw XML
+- ➕ Generate route from place names (geocoding via Nominatim)
+- 📍 Import from Google Maps link
+- 📱 Mobile-friendly layout
 
-## Spuštění (Docker)
+## Quick Start (Docker)
 
 ```bash
 docker compose up -d
 ```
 
-Appka běží na `http://localhost:5055`.
+App runs at `http://localhost:5055`.
 
-## Vývoj bez Dockeru
+## Development (without Docker)
 
 ```bash
 pip install flask requests
 python app.py
 ```
 
-## Struktura
+## Project Structure
 
 ```
 app.py              # Flask API
@@ -37,15 +36,15 @@ Dockerfile
 docker-compose.yml
 ```
 
-## API
+## API Reference
 
-| Method | Path | Popis |
-|--------|------|-------|
-| GET | `/api/files` | Seznam souborů |
-| GET | `/api/files/<name>` | Stáhnout GPX |
-| GET | `/api/files/<name>/content` | Obsah jako text |
-| PUT | `/api/files/<name>` | Uložit/přepsat |
-| DELETE | `/api/files/<name>` | Smazat |
-| POST | `/api/files/<name>/rename` | Přejmenovat |
-| POST | `/api/generate/waypoints` | Generovat z názvů míst |
-| POST | `/api/generate/gmaps` | Import z Google Maps |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/files` | List all files |
+| GET | `/api/files/<name>` | Download GPX file |
+| GET | `/api/files/<name>/content` | Get file content as text |
+| PUT | `/api/files/<name>` | Save / overwrite file |
+| DELETE | `/api/files/<name>` | Delete file |
+| POST | `/api/files/<name>/rename` | Rename file |
+| POST | `/api/generate/waypoints` | Generate GPX from place names |
+| POST | `/api/generate/gmaps` | Import from Google Maps link |
