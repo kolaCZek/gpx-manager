@@ -40,41 +40,57 @@ def parse_gmaps_url(url):
     if "goo.gl" in url or "maps.app.goo.gl" in url:
         r = requests.get(url, allow_redirects=True, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         url = r.url
+        # Google may redirect to consent page — extract real URL from continue= param
+        if "consent.google.com" in url:
+            m = re.search(r'continue=([^&]+(?:&[^&]*)*?)(?:&gl=|&m=|&pc=|$)', url)
+            if m:
+                # Double-decode: consent URL double-encodes the maps URL
+                url = urllib.parse.unquote(urllib.parse.unquote(m.group(1)))
 
-    # Try to extract geocode params from URL
     waypoints = []
-    # Look for geocode= pattern with semicolon-separated pairs
-    gc_match = re.search(r'geocode=([^&]+)', url)
-    # Look for daddr= (destinations) and saddr= (source)
-    saddr = re.search(r'saddr=([^&]+)', url)
-    daddr = re.search(r'daddr=([^&]+)', url)
 
-    if saddr and daddr:
-        src = urllib.parse.unquote_plus(saddr.group(1))
-        dsts = urllib.parse.unquote_plus(daddr.group(1)).split("+to:")
-        all_places = [src] + dsts
-        for place in all_places:
-            place = place.strip()
-            if place:
-                coords = geocode(place)
-                if coords:
-                    waypoints.append({"name": place, "lat": coords[0], "lon": coords[1]})
-                time.sleep(0.5)
+    # Parse path segments from /maps/dir/A/B/C/@...
+    dir_match = re.search(r'/maps/dir/([^?]+?)/@', url)
+    if not dir_match:
+        dir_match = re.search(r'/maps/dir/([^?]+)', url)
+    if not dir_match:
         return waypoints
 
-    # Fallback: try /dir/ URL format
-    # e.g. /maps/dir/PlaceA/PlaceB/PlaceC
-    dir_match = re.search(r'/maps/dir/([^?@]+)', url)
-    if dir_match:
-        parts = dir_match.group(1).split("/")
-        for part in parts:
-            part = urllib.parse.unquote_plus(part).strip()
-            if part and part not in ("", "maps"):
-                coords = geocode(part)
+    segments = []
+    for part in dir_match.group(1).split("/"):
+        part = urllib.parse.unquote_plus(part).strip()
+        if part:
+            segments.append(part)
+
+    # Extract coords from data= for named places (in order they appear in data=)
+    # Pattern: !1d<lon>!2d<lat> or !2d<lon>!2d<lat> — these are place coords
+    data_coords = []
+    for lon_str, lat_str in re.findall(r'!(?:1|2)d([-\d.]+)!2d([-\d.]+)', url):
+        lat, lon = float(lat_str), float(lon_str)
+        if 40 < lat < 60 and 5 < lon < 30:  # Europe sanity check
+            data_coords.append((lat, lon))
+
+    # Build waypoints: walk segments in order, assign coords
+    data_idx = 0
+    for i, seg in enumerate(segments):
+        # Is it a raw coordinate?
+        m = re.match(r'^([-\d.]+),([-\d.]+)$', seg)
+        if m:
+            lat, lon = float(m.group(1)), float(m.group(2))
+            waypoints.append({"name": f"Waypoint {len(waypoints)+1}", "lat": round(lat,7), "lon": round(lon,7)})
+        else:
+            # Named place — use next data= coord if available
+            name = seg.split(",")[0].strip()  # strip address suffix
+            if data_idx < len(data_coords):
+                lat, lon = data_coords[data_idx]
+                data_idx += 1
+                waypoints.append({"name": name, "lat": round(lat,7), "lon": round(lon,7)})
+            else:
+                # Fallback: geocode
+                coords = geocode(seg)
                 if coords:
-                    waypoints.append({"name": part, "lat": coords[0], "lon": coords[1]})
+                    waypoints.append({"name": name, "lat": coords[0], "lon": coords[1]})
                 time.sleep(0.5)
-        return waypoints
 
     return waypoints
 

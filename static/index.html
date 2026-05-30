@@ -52,8 +52,12 @@ body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; 
 .tab-pane { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; }
 .tab-pane.on { display: flex; }
 .wp-list { flex: 1; overflow-y: auto; }
-.wp-item { display: flex; align-items: center; padding: .5rem .75rem; border-bottom: 1px solid #1a1a1a; gap: .4rem; cursor: pointer; }
-.wp-item:hover { background: #1c1f26; }
+.wp-item { display: flex; align-items: center; padding: .5rem .75rem; border-bottom: 1px solid #1a1a1a; gap: .4rem; cursor: pointer; user-select: none; transition: background .15s; }
+.wp-item:hover { background: #131720; }
+.wp-item.dragging { opacity: 0.4; }
+.wp-item.drag-over { background: #1e2a3a; border-top: 2px solid #4a9eff; }
+.wp-drag { color: #555; font-size: 15px; cursor: grab; flex-shrink: 0; }
+.wp-drag:active { cursor: grabbing; }
 .wp-num { font-size: .68rem; color: #555; width: 16px; flex-shrink: 0; text-align: right; }
 .wp-body { flex: 1; min-width: 0; }
 .wp-name { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -325,7 +329,13 @@ function renderWpList() {
     return;
   }
   el.innerHTML = waypoints.map((wp, i) => `
-    <div class="wp-item" onclick="focusWp(${i})">
+    <div class="wp-item" draggable="true" data-idx="${i}"
+         ondragstart="wpDragStart(event,${i})"
+         ondragover="wpDragOver(event)"
+         ondrop="wpDrop(event,${i})"
+         ondragend="wpDragEnd()"
+         onclick="focusWp(${i})">
+      <div class="wp-drag" title="Přetáhni pro změnu pořadí">⠿</div>
       <div class="wp-num">${i+1}</div>
       <div class="wp-body">
         <div class="wp-name">${escHtml(wp.name)}</div>
@@ -333,6 +343,34 @@ function renderWpList() {
       </div>
       <button class="wp-del" onclick="event.stopPropagation();removeWp(${i})">✕</button>
     </div>`).join('');
+}
+
+let dragSrcIdx = null;
+function wpDragStart(e, i) {
+  dragSrcIdx = i;
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('dragging');
+}
+function wpDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.wp-item').forEach(el => el.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+function wpDrop(e, targetIdx) {
+  e.preventDefault();
+  if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
+  const moved = waypoints.splice(dragSrcIdx, 1)[0];
+  waypoints.splice(targetIdx, 0, moved);
+  dragSrcIdx = null;
+  renderAll();
+  scheduleSave();
+}
+function wpDragEnd() {
+  document.querySelectorAll('.wp-item').forEach(el => {
+    el.classList.remove('dragging', 'drag-over');
+  });
+  dragSrcIdx = null;
 }
 
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
