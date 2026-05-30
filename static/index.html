@@ -501,7 +501,7 @@ async function deleteByName(name) {
 }
 
 async function deleteFile() { if (currentFile) deleteByName(currentFile); }
-function downloadDirect(name) { window.location.href = `/gpx-api/files/${encodeURIComponent(name)}`; }
+function downloadDirect(name) { window.location.href = `api/files/${encodeURIComponent(name)}`; }
 function downloadFile() { if (currentFile) downloadDirect(currentFile); }
 
 async function renamePrompt(name) {
