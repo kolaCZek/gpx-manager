@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>GPX Manager</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; display: flex; flex-direction: column; height: 100%; }
+
+/* ── Header ── */
+.header { display: flex; align-items: center; justify-content: space-between; padding: .7rem 1rem; border-bottom: 1px solid #222; flex-shrink: 0; background: #0f1117; z-index: 10; }
+.header h1 { font-size: 1.1rem; font-weight: 700; }
+.header h1 span { color: #4da6ff; }
+.hdr-btns { display: flex; gap: .4rem; }
+.hdr-btns button { padding: .4rem .8rem; border: none; border-radius: 8px; cursor: pointer; font-size: .8rem; font-weight: 600; }
+.btn-new { background: #4da6ff; color: #000; }
+.btn-gmaps { background: #2a2a2a; color: #ccc; border: 1px solid #333 !important; }
+
+/* ── App grid (desktop): sidebar | map | editor ── */
+.app { flex: 1; display: grid; grid-template-columns: 240px 1fr 300px; grid-template-rows: auto 1fr; min-height: 0; }
+
+/* Toolbar spans map+editor columns */
+.toolbar { grid-column: 2 / 4; display: none; align-items: center; gap: .4rem; flex-wrap: wrap; padding: .5rem .75rem; border-bottom: 1px solid #222; background: #0f1117; }
+.toolbar.visible { display: flex; }
+.toolbar input { background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; padding: .38rem .65rem; border-radius: 7px; font-size: .82rem; flex: 1; min-width: 100px; }
+.tbtn { padding: .38rem .7rem; border: none; border-radius: 7px; cursor: pointer; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+.btn-save { background: #22c55e; color: #000; }
+.btn-dl { background: #2a2a2a; color: #ccc; border: 1px solid #333 !important; }
+.btn-del { background: #ef4444; color: #fff; }
+
+/* Sidebar */
+.sidebar { grid-row: 1 / 3; border-right: 1px solid #222; overflow-y: auto; background: #0f1117; }
+
+/* Map */
+.map-wrap { position: relative; min-height: 0; overflow: hidden; }
+#map { width: 100%; height: 100%; }
+.map-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); color: #ddd; font-size: .72rem; padding: .3rem .75rem; border-radius: 99px; pointer-events: none; z-index: 500; white-space: nowrap; display: none; }
+.btn-add-wrap { position: absolute; top: 10px; right: 10px; z-index: 500; }
+.btn-add-mode { background: #4da6ff; color: #000; border: none; border-radius: 8px; padding: .45rem .85rem; font-size: .8rem; font-weight: 700; cursor: pointer; }
+.btn-add-mode.on { background: #22c55e; }
+.map-wrap.adding { cursor: crosshair; }
+
+/* Editor panel */
+.editor-wrap { border-left: 1px solid #222; display: flex; flex-direction: column; min-height: 0; background: #0f1117; }
+.tabs { display: flex; border-bottom: 1px solid #222; flex-shrink: 0; }
+.tab { flex: 1; padding: .5rem; text-align: center; font-size: .78rem; cursor: pointer; color: #666; border-bottom: 2px solid transparent; }
+.tab.on { color: #4da6ff; border-bottom-color: #4da6ff; }
+.tab-pane { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; }
+.tab-pane.on { display: flex; }
+.wp-list { flex: 1; overflow-y: auto; }
+.wp-item { display: flex; align-items: center; padding: .5rem .75rem; border-bottom: 1px solid #1a1a1a; gap: .4rem; cursor: pointer; }
+.wp-item:hover { background: #1c1f26; }
+.wp-num { font-size: .68rem; color: #555; width: 16px; flex-shrink: 0; text-align: right; }
+.wp-body { flex: 1; min-width: 0; }
+.wp-name { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-coords { font-size: .67rem; color: #555; }
+.wp-del { background: none; border: none; color: #f87171; cursor: pointer; font-size: .9rem; padding: .15rem .35rem; flex-shrink: 0; }
+.wp-empty { padding: 1.5rem; text-align: center; color: #444; font-size: .82rem; }
+textarea { flex: 1; background: #0d1117; color: #d4e8a0; border: none; outline: none; padding: .75rem; font-family: monospace; font-size: .72rem; line-height: 1.6; resize: none; width: 100%; }
+
+/* File list */
+.file-item { display: flex; align-items: center; padding: .6rem .75rem; border-bottom: 1px solid #1a1a1a; cursor: pointer; gap: .4rem; transition: background .15s; }
+.file-item:hover { background: #1c1f26; }
+.file-item.on { background: #1a2a3a; border-left: 3px solid #4da6ff; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: .67rem; color: #555; margin-top: .1rem; }
+.file-btns { display: flex; gap: .2rem; flex-shrink: 0; }
+.file-btns button { background: #1e2028; border: 1px solid #2a2a2a; color: #aaa; border-radius: 5px; padding: .28rem .45rem; font-size: .75rem; cursor: pointer; }
+.file-btns .del-btn { color: #f87171; }
+
+/* Empty state overlay */
+.empty-state { grid-column: 2 / 4; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #444; gap: .75rem; }
+.empty-state.hidden { display: none; }
+.empty-icon { font-size: 2.5rem; }
+
+/* ── Modal ── */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.75); display: flex; align-items: flex-end; justify-content: center; z-index: 1000; padding: 1rem; }
+@media (min-width: 700px) { .modal-bg { align-items: center; } }
+.modal-bg.hidden { display: none; }
+.modal { background: #1a1d24; border: 1px solid #2a2a2a; border-radius: 14px; width: 100%; max-width: 460px; padding: 1.25rem; }
+.modal h2 { font-size: .95rem; margin-bottom: .75rem; }
+.modal label { font-size: .76rem; color: #777; display: block; margin: .6rem 0 .2rem; }
+.modal input, .modal textarea { width: 100%; background: #0f1117; border: 1px solid #333; color: #e0e0e0; padding: .45rem .7rem; border-radius: 7px; font-size: .88rem; }
+.modal textarea { min-height: 80px; font-family: monospace; resize: vertical; }
+.modal-footer { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; }
+.modal-footer button { padding: .45rem 1rem; border: none; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: .83rem; }
+.btn-cancel { background: #2a2a2a; color: #ccc; }
+.btn-ok { background: #4da6ff; color: #000; }
+
+/* ── Toast ── */
+.toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #22c55e; color: #000; padding: .5rem 1.1rem; border-radius: 99px; font-weight: 600; font-size: .8rem; opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap; z-index: 2000; }
+.toast.show { opacity: 1; }
+.toast.err { background: #ef4444; color: #fff; }
+
+/* ── Mobile ── */
+@media (max-width: 749px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .toolbar { grid-column: 1; }
+  .sidebar { grid-row: auto; border-right: none; border-bottom: 1px solid #222; display: none; }
+  .sidebar.mob-show { display: block; }
+  .map-wrap { display: block; }
+  .map-wrap.mob-hide { display: none; }
+  .editor-wrap { border-left: none; border-top: 1px solid #222; display: none; }
+  .editor-wrap.mob-show { display: flex; }
+  .empty-state { grid-column: 1; }
+  .mob-nav { display: flex !important; }
+  .toast { bottom: 4.5rem; }
+}
+.mob-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #1a1d24; border-top: 1px solid #2a2a2a; z-index: 100; }
+.mob-nav button { flex: 1; padding: .65rem .5rem .55rem; background: none; border: none; color: #666; font-size: .68rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: .15rem; }
+.mob-nav button.on { color: #4da6ff; }
+.mob-nav button .ni { font-size: 1.2rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🗺 <span>GPX</span> Manager</h1>
+  <div class="hdr-btns">
+    <button class="btn-new" onclick="openNewModal()">+ Nová</button>
+    <button class="btn-gmaps" onclick="openGmapsModal()">📍 GMaps</button>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div id="fileList"></div>
+  </div>
+
+  <!-- Toolbar (spans map+editor) -->
+  <div class="toolbar" id="toolbar">
+    <input type="text" id="filenameInput" placeholder="nazev.gpx">
+    <button class="tbtn btn-save" onclick="saveFile()">💾 Uložit</button>
+    <button class="tbtn btn-dl" onclick="downloadFile()">⬇</button>
+    <button class="tbtn btn-del" onclick="deleteFile()">🗑 Smazat</button>
+  </div>
+
+  <!-- Empty state -->
+  <div class="empty-state" id="emptyState">
+    <div class="empty-icon">🗺</div>
+    <div>Vyber trasu vlevo nebo vytvoř novou</div>
+  </div>
+
+  <!-- Map -->
+  <div class="map-wrap" id="mapWrap" style="display:none">
+    <div id="map"></div>
+    <div class="btn-add-wrap">
+      <button class="btn-add-mode" id="addModeBtn" onclick="toggleAddMode()">+ Přidat bod</button>
+    </div>
+    <div class="map-hint" id="mapHint">Klikni na mapu pro přidání bodu</div>
+  </div>
+
+  <!-- Editor panel -->
+  <div class="editor-wrap" id="editorWrap" style="display:none">
+    <div class="tabs">
+      <div class="tab on" onclick="switchTab('wpts')">📍 Waypoints</div>
+      <div class="tab" onclick="switchTab('xml')">📄 XML</div>
+    </div>
+    <div class="tab-pane on" id="tab-wpts">
+      <div class="wp-list" id="wpList"></div>
+    </div>
+    <div class="tab-pane" id="tab-xml">
+      <textarea id="editor" spellcheck="false" oninput="onXmlEdit()"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile nav -->
+<div class="mob-nav" id="mobNav">
+  <button onclick="mobShow('files')" id="mn-files"><span class="ni">📁</span>Soubory</button>
+  <button onclick="mobShow('map')" id="mn-map" class="on"><span class="ni">🗺</span>Mapa</button>
+  <button onclick="mobShow('editor')" id="mn-editor"><span class="ni">✏️</span>Editor</button>
+</div>
+
+<!-- Modals -->
+<div class="modal-bg hidden" id="newModal">
+  <div class="modal">
+    <h2>Nová trasa</h2>
+    <label>Název souboru</label>
+    <input type="text" id="newName" placeholder="moje_trasa">
+    <label>Waypoints (každý na nový řádek)</label>
+    <textarea id="newWaypoints" placeholder="Praha&#10;Brno&#10;Ostrava"></textarea>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModals()">Zrušit</button>
+      <button class="btn-ok" onclick="generateWaypoints()">Vytvořit</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="gmapsModal">
+  <div class="modal">
+    <h2>Importovat z Google Maps</h2>
+    <label>Název souboru</label>
+    <input type="text" id="gmapsName" placeholder="moje_trasa">
+    <label>Google Maps odkaz</label>
+    <input type="text" id="gmapsUrl" placeholder="https://maps.app.goo.gl/...">
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModals()">Zrušit</button>
+      <button class="btn-ok" onclick="generateFromGmaps()">Importovat</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg hidden" id="nameModal">
+  <div class="modal">
+    <h2>Název bodu</h2>
+    <label>Název (nebo nechej prázdné)</label>
+    <input type="text" id="nameInput" placeholder="Zastávka">
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="cancelAddPoint()">Zrušit</button>
+      <button class="btn-ok" onclick="confirmAddPoint()">Přidat</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let currentFile = null;
+let waypoints = [];
+let markers = [];
+let polyline = null;
+let addMode = false;
+let pendingLL = null;
+
+// ── Map ────────────────────────────────────────────────────────────────────
+const map = L.map('map').setView([50.0, 15.5], 8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap', maxZoom: 19
+}).addTo(map);
+
+map.on('click', e => {
+  if (!addMode) return;
+  pendingLL = e.latlng;
+  document.getElementById('nameInput').value = '';
+  document.getElementById('nameModal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('nameInput').focus(), 100);
+});
+
+function toggleAddMode() {
+  addMode = !addMode;
+  const btn = document.getElementById('addModeBtn');
+  const hint = document.getElementById('mapHint');
+  const wrap = document.getElementById('mapWrap');
+  btn.textContent = addMode ? '✓ Hotovo' : '+ Přidat bod';
+  btn.classList.toggle('on', addMode);
+  hint.style.display = addMode ? 'block' : 'none';
+  wrap.classList.toggle('adding', addMode);
+}
+
+function confirmAddPoint() {
+  document.getElementById('nameModal').classList.add('hidden');
+  if (!pendingLL) return;
+  const name = document.getElementById('nameInput').value.trim() || `Bod ${waypoints.length + 1}`;
+  waypoints.push({ lat: +pendingLL.lat.toFixed(6), lon: +pendingLL.lng.toFixed(6), name });
+  pendingLL = null;
+  if (addMode) toggleAddMode();
+  renderAll();
+}
+function cancelAddPoint() {
+  document.getElementById('nameModal').classList.add('hidden');
+  pendingLL = null;
+  if (addMode) toggleAddMode();
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function makeIcon(i) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="background:#4da6ff;color:#000;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.5)">${i+1}</div>`,
+    iconSize: [26,26], iconAnchor: [13,13]
+  });
+}
+
+function renderAll() {
+  renderMarkers();
+  renderWpList();
+  updateXml();
+}
+
+function renderMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+
+  waypoints.forEach((wp, i) => {
+    const m = L.marker([wp.lat, wp.lon], { icon: makeIcon(i), draggable: true })
+      .addTo(map)
+      .bindTooltip(`${i+1}. ${wp.name}`, { direction: 'top' });
+    m.on('dragend', () => {
+      const p = m.getLatLng();
+      waypoints[i].lat = +p.lat.toFixed(6);
+      waypoints[i].lon = +p.lng.toFixed(6);
+      renderWpList();
+      updateXml();
+    });
+    m.on('click', () => {
+      if (addMode) return;
+      if (confirm(`Odebrat "${wp.name}"?`)) { removeWp(i); }
+    });
+    markers.push(m);
+  });
+
+  if (waypoints.length > 1) {
+    polyline = L.polyline(waypoints.map(w => [w.lat, w.lon]), {
+      color: '#4da6ff', weight: 3, opacity: .7, dashArray: '6 4'
+    }).addTo(map);
+  }
+  if (waypoints.length > 0) {
+    map.fitBounds(waypoints.map(w => [w.lat, w.lon]), { padding: [40,40], maxZoom: 14 });
+  }
+}
+
+function renderWpList() {
+  const el = document.getElementById('wpList');
+  if (!waypoints.length) {
+    el.innerHTML = '<div class="wp-empty">Žádné waypoints.<br>Klikni + Přidat bod nebo přidej z editoru.</div>';
+    return;
+  }
+  el.innerHTML = waypoints.map((wp, i) => `
+    <div class="wp-item" onclick="focusWp(${i})">
+      <div class="wp-num">${i+1}</div>
+      <div class="wp-body">
+        <div class="wp-name">${escHtml(wp.name)}</div>
+        <div class="wp-coords">${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}</div>
+      </div>
+      <button class="wp-del" onclick="event.stopPropagation();removeWp(${i})">✕</button>
+    </div>`).join('');
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function focusWp(i) { map.setView([waypoints[i].lat, waypoints[i].lon], 14); markers[i]?.openTooltip(); }
+function removeWp(i) { waypoints.splice(i,1); renderAll(); }
+
+// ── GPX ────────────────────────────────────────────────────────────────────
+function parseGpx(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const byTag = (...tags) => {
+    for (const t of tags) {
+      const ns = doc.getElementsByTagNameNS('http://www.topografix.com/GPX/1/1', t);
+      if (ns.length) return [...ns];
+      const plain = doc.getElementsByTagName(t);
+      if (plain.length) return [...plain];
+    }
+    return [];
+  };
+  const pts = byTag('wpt') || byTag('rtept') || byTag('trkpt');
+  return pts.map(p => {
+    const nameEl = p.getElementsByTagName('name')[0];
+    return { lat: +p.getAttribute('lat'), lon: +p.getAttribute('lon'), name: nameEl ? nameEl.textContent : 'Bod' };
+  }).filter(w => !isNaN(w.lat) && !isNaN(w.lon));
+}
+
+function updateXml() {
+  const name = (currentFile || 'trasa').replace('.gpx','');
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="GPX Manager" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${escHtml(name)}</name></metadata>\n`;
+  waypoints.forEach(wp => { xml += `  <wpt lat="${wp.lat}" lon="${wp.lon}"><name>${escHtml(wp.name)}</name></wpt>\n`; });
+  xml += `</gpx>`;
+  document.getElementById('editor').value = xml;
+  autoSave();
+}
+
+function onXmlEdit() {
+  clearTimeout(window._xmlT);
+  window._xmlT = setTimeout(() => {
+    const parsed = parseGpx(document.getElementById('editor').value);
+    waypoints = parsed;
+    renderMarkers();
+    renderWpList();
+    autoSave();
+  }, 900);
+}
+
+function autoSave() {
+  if (!currentFile) return;
+  clearTimeout(window._saveT);
+  window._saveT = setTimeout(async () => {
+    const content = document.getElementById('editor').value;
+    await api(`/files/${encodeURIComponent(currentFile)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: content
+    });
+    toast('Uloženo ✓');
+  }, 600);
+}
+
+// ── Files ──────────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  return fetch('/gpx-api' + path, { headers: {'Content-Type':'application/json',...(opts.headers||{})}, ...opts });
+}
+
+async function loadFiles() {
+  const files = await (await api('/files')).json();
+  const el = document.getElementById('fileList');
+  if (!files.length) { el.innerHTML = '<div style="padding:1rem;color:#555;font-size:.8rem">Žádné soubory</div>'; return; }
+  el.innerHTML = files.map(f => `
+    <div class="file-item ${f.name===currentFile?'on':''}" onclick="openFile('${f.name}')">
+      <div class="file-info">
+        <div class="file-name">📄 ${f.name}</div>
+        <div class="file-meta">${(f.size/1024).toFixed(1)} KB</div>
+      </div>
+      <div class="file-btns" onclick="event.stopPropagation()">
+        <button onclick="renamePrompt('${f.name}')">✏️</button>
+        <button onclick="downloadDirect('${f.name}')">⬇</button>
+        <button class="del-btn" onclick="deleteByName('${f.name}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function openFile(name) {
+  currentFile = name;
+  const xml = await (await api(`/files/${encodeURIComponent(name)}/content`)).text();
+  document.getElementById('filenameInput').value = name;
+  document.getElementById('editor').value = xml;
+  waypoints = parseGpx(xml);
+
+  // Show panels
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('toolbar').classList.add('visible');
+  document.getElementById('mapWrap').style.display = '';
+  document.getElementById('editorWrap').style.display = '';
+
+  renderAll();
+  setTimeout(() => map.invalidateSize(), 100);
+  loadFiles();
+  if (window.innerWidth <= 749) mobShow('map');
+}
+
+async function saveFile() {
+  const name = document.getElementById('filenameInput').value.trim();
+  const content = document.getElementById('editor').value;
+  if (currentFile && name !== currentFile) {
+    await api(`/files/${encodeURIComponent(currentFile)}/rename`, { method:'POST', body: JSON.stringify({name}) });
+    currentFile = name.endsWith('.gpx') ? name : name+'.gpx';
+    document.getElementById('filenameInput').value = currentFile;
+  }
+  const target = currentFile || (name.endsWith('.gpx') ? name : name+'.gpx');
+  if (!currentFile) currentFile = target;
+  await api(`/files/${encodeURIComponent(target)}`, { method:'PUT', headers:{'Content-Type':'text/plain'}, body: content });
+  toast('Uloženo ✓'); loadFiles();
+}
+
+async function deleteByName(name) {
+  if (!confirm(`Smazat ${name}?`)) return;
+  await api(`/files/${encodeURIComponent(name)}`, { method:'DELETE' });
+  if (currentFile === name) {
+    currentFile = null; waypoints = [];
+    if (polyline) { map.removeLayer(polyline); polyline = null; }
+    markers.forEach(m => map.removeLayer(m)); markers = [];
+    renderWpList();
+    document.getElementById('emptyState').classList.remove('hidden');
+    document.getElementById('toolbar').classList.remove('visible');
+    document.getElementById('mapWrap').style.display = 'none';
+    document.getElementById('editorWrap').style.display = 'none';
+  }
+  toast('Smazáno'); loadFiles();
+}
+
+async function deleteFile() { if (currentFile) deleteByName(currentFile); }
+function downloadDirect(name) { window.location.href = `/gpx-api/files/${encodeURIComponent(name)}`; }
+function downloadFile() { if (currentFile) downloadDirect(currentFile); }
+
+async function renamePrompt(name) {
+  const n = prompt('Nový název:', name.replace('.gpx',''));
+  if (!n) return;
+  await api(`/files/${encodeURIComponent(name)}/rename`, { method:'POST', body: JSON.stringify({name:n}) });
+  if (currentFile === name) { currentFile = n.endsWith('.gpx')?n:n+'.gpx'; document.getElementById('filenameInput').value = currentFile; }
+  toast('Přejmenováno'); loadFiles();
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function openNewModal() { document.getElementById('newName').value=''; document.getElementById('newWaypoints').value=''; document.getElementById('newModal').classList.remove('hidden'); }
+function openGmapsModal() { document.getElementById('gmapsName').value=''; document.getElementById('gmapsUrl').value=''; document.getElementById('gmapsModal').classList.remove('hidden'); }
+function closeModals() { ['newModal','gmapsModal'].forEach(id => document.getElementById(id).classList.add('hidden')); }
+
+async function generateWaypoints() {
+  const name = document.getElementById('newName').value.trim()||'trasa';
+  const lines = document.getElementById('newWaypoints').value.trim().split('\n').map(s=>s.trim()).filter(Boolean);
+  closeModals(); toast('Geocoduji…');
+  const data = await (await api('/generate/waypoints', {method:'POST', body:JSON.stringify({name, waypoints:lines})})).json();
+  if (data.ok) { toast(`Hotovo (${data.waypoints.length} bodů) ✓`); loadFiles(); openFile(data.name); }
+  else toast('Chyba: '+(data.error||'?'), true);
+}
+
+async function generateFromGmaps() {
+  const name = document.getElementById('gmapsName').value.trim()||'trasa';
+  const url = document.getElementById('gmapsUrl').value.trim();
+  if (!url) return;
+  closeModals(); toast('Importuji…');
+  const data = await (await api('/generate/gmaps', {method:'POST', body:JSON.stringify({name,url})})).json();
+  if (data.ok) { toast(`Importováno (${data.waypoints.length} bodů) ✓`); loadFiles(); openFile(data.name); }
+  else toast('Chyba: '+(data.error||'Nepodařilo se extrahovat'), true);
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('on', ['wpts','xml'][i]===name));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  document.getElementById('tab-'+name).classList.add('on');
+  if (name==='xml') setTimeout(()=>map.invalidateSize(),50);
+}
+
+// ── Mobile nav ─────────────────────────────────────────────────────────────
+function mobShow(p) {
+  document.getElementById('sidebar').classList.remove('mob-show');
+  document.getElementById('editorWrap').classList.remove('mob-show');
+  document.getElementById('mapWrap').classList.remove('mob-hide');
+  ['mn-files','mn-map','mn-editor'].forEach(id => document.getElementById(id).classList.remove('on'));
+  if (p==='files') { document.getElementById('sidebar').classList.add('mob-show'); document.getElementById('mapWrap').classList.add('mob-hide'); document.getElementById('mn-files').classList.add('on'); }
+  else if (p==='editor') { document.getElementById('editorWrap').classList.add('mob-show'); document.getElementById('mapWrap').classList.add('mob-hide'); document.getElementById('mn-editor').classList.add('on'); }
+  else { document.getElementById('mn-map').classList.add('on'); setTimeout(()=>map.invalidateSize(),100); }
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, err=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show'+(err===true?' err':'');
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>el.className='toast', 3000);
+}
+
+loadFiles();
+</script>
+</body>
+</html>

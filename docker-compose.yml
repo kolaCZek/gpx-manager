@@ -1,0 +1,12 @@
+services:
+  gpx-manager:
+    build: .
+    container_name: gpx-manager
+    restart: unless-stopped
+    ports:
+      - "5055:5055"
+    volumes:
+      - gpx-data:/data/gpx
+
+volumes:
+  gpx-data:
